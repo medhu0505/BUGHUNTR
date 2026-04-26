@@ -4,13 +4,23 @@ import { useQuery } from "@tanstack/react-query";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { StatsCard } from "@/components/StatsCard";
 import { SeverityBadge } from "@/components/SeverityBadge";
-import { fetchActivityFeed, fetchFindings, fetchModules, fetchStats } from "@/lib/data-service";
+import { fetchActivityFeed, fetchModules, fetchRecentFindings, fetchStats } from "@/lib/data-service";
+
+function formatTime(timestamp?: string) {
+  if (!timestamp) return "—";
+  const parsed = new Date(timestamp);
+  return Number.isNaN(parsed.getTime()) ? "—" : parsed.toLocaleTimeString();
+}
 
 export default function DashboardOverview() {
-  const { data: stats } = useQuery({ queryKey: ["stats"], queryFn: fetchStats });
-  const { data: findings = [] } = useQuery({ queryKey: ["findings"], queryFn: fetchFindings });
-  const { data: activityFeed = [] } = useQuery({ queryKey: ["activity-feed"], queryFn: fetchActivityFeed });
-  const { data: modules = [] } = useQuery({ queryKey: ["modules"], queryFn: fetchModules });
+  const statsQuery = useQuery({ queryKey: ["stats"], queryFn: fetchStats });
+  const findingsQuery = useQuery({ queryKey: ["recent-findings"], queryFn: () => fetchRecentFindings(20) });
+  const activityQuery = useQuery({ queryKey: ["activity-feed"], queryFn: fetchActivityFeed });
+  const modulesQuery = useQuery({ queryKey: ["modules"], queryFn: fetchModules });
+  const stats = statsQuery.data;
+  const findings = useMemo(() => findingsQuery.data ?? [], [findingsQuery.data]);
+  const activityFeed = useMemo(() => activityQuery.data ?? [], [activityQuery.data]);
+  const modules = useMemo(() => modulesQuery.data ?? [], [modulesQuery.data]);
 
   const pieData = useMemo(() => {
     if (!stats) return [];
@@ -29,12 +39,24 @@ export default function DashboardOverview() {
           name: m.name.split(" ")[0],
           count: findings.filter((f) => f.module === m.id).length,
         }))
-        .filter((d) => d.count > 0),
+        .filter((d) => d.count > 0)
+        .slice(0, 8),
     [findings, modules],
   );
 
-  if (!stats) {
+  if (statsQuery.isLoading) {
     return <div className="text-sm text-muted-foreground">Loading dashboard...</div>;
+  }
+
+  if (!stats || statsQuery.isError) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-bold neon-text tracking-wider">DASHBOARD OVERVIEW</h1>
+        <div className="bg-card rounded-lg border border-border p-6 text-sm text-destructive">
+          Dashboard data could not be loaded. Check frontend API settings and refresh.
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -58,6 +80,9 @@ export default function DashboardOverview() {
             <span className="text-xs text-muted-foreground uppercase tracking-wider">Live Activity Feed</span>
           </div>
           <div className="p-3 h-64 overflow-y-auto font-mono text-xs leading-loose scanline">
+            {activityFeed.length === 0 && (
+              <div className="text-muted-foreground">No activity yet.</div>
+            )}
             {activityFeed.map((entry, i) => (
               <div key={i} className={
                 entry.type === 'critical' ? 'text-destructive' :
@@ -138,9 +163,16 @@ export default function DashboardOverview() {
                   <td className="px-4 py-2">{f.finding}</td>
                   <td className="px-4 py-2"><SeverityBadge severity={f.severity} /></td>
                   <td className="px-4 py-2 text-muted-foreground">{f.module}</td>
-                  <td className="px-4 py-2 text-muted-foreground">{new Date(f.timestamp).toLocaleTimeString()}</td>
+                  <td className="px-4 py-2 text-muted-foreground">{formatTime(f.timestamp)}</td>
                 </tr>
               ))}
+              {findings.length === 0 && (
+                <tr>
+                  <td className="px-4 py-6 text-center text-muted-foreground" colSpan={5}>
+                    No findings yet.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

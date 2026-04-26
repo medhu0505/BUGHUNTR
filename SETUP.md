@@ -18,21 +18,22 @@
    ```bash
    npm run dev
    ```
-   Frontend runs on `http://localhost:5173`
+   Frontend runs on `http://localhost:8080`
 
 ### Backend Setup
 
 1. **Create virtual environment:**
    ```bash
-   cd BUGHUNTRv1/backend
-   python -m venv venv
-   venv\Scripts\activate  # Windows
+   cd BUGHUNTRv1
+   python -m venv .venv
+   .venv\Scripts\activate  # Windows
    # OR
-   source venv/bin/activate  # Mac/Linux
+   source .venv/bin/activate  # Mac/Linux
    ```
 
 2. **Install dependencies:**
    ```bash
+   cd backend
    pip install -r requirements.txt
    ```
 

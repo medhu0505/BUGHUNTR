@@ -2,6 +2,12 @@ export type Severity = 'critical' | 'high' | 'medium' | 'low' | 'info';
 export type ScanStatus = 'idle' | 'running' | 'complete';
 export type FindingStatus = 'open' | 'confirmed' | 'false-positive' | 'resolved';
 
+export interface VulnerableObject {
+  url: string;
+  type: string;
+  description?: string;
+}
+
 export interface Finding {
   id: string;
   asset: string;
@@ -11,6 +17,7 @@ export interface Finding {
   module: string;
   timestamp: string;
   details: string;
+  vulnerableObjects?: VulnerableObject[];
 }
 
 export interface ScanResult {
@@ -32,8 +39,8 @@ export interface ModuleDefinition {
 
 export interface ModuleOption {
   label: string;
-  type: "toggle" | "checkbox";
-  default: boolean;
+  type: "toggle" | "checkbox" | "number";
+  default: boolean | number;
 }
 
 export interface DashboardStats {
@@ -53,13 +60,13 @@ export interface ActivityEntry {
 
 export const MODULES: ModuleDefinition[] = [
   { id: 'subdomain-takeover', name: 'Subdomain Takeover', icon: 'Globe', path: '/scanner/subdomain-takeover' },
-  { id: 's3-bucket', name: 'S3/Blob Bucket Checker', icon: 'Database', path: '/scanner/s3-bucket' },
-  { id: 'cors-misconfig', name: 'CORS Misconfiguration', icon: 'Shield', path: '/scanner/cors-misconfig' },
+  { id: 's3-buckets', name: 'S3/Blob Bucket Checker', icon: 'Database', path: '/scanner/s3-buckets' },
+  { id: 'cors', name: 'CORS Misconfiguration', icon: 'Shield', path: '/scanner/cors' },
   { id: 'sensitive-files', name: 'Sensitive File Exposure', icon: 'FileWarning', path: '/scanner/sensitive-files' },
   { id: 'api-key-leak', name: 'API Key Leak Detector', icon: 'Key', path: '/scanner/api-key-leak' },
   { id: 'open-redirect', name: 'Open Redirect Fuzzer', icon: 'ExternalLink', path: '/scanner/open-redirect' },
   { id: 'clickjacking', name: 'CORS + Clickjacking', icon: 'Layers', path: '/scanner/clickjacking' },
-  { id: 'dns-zone', name: 'DNS Zone Transfer', icon: 'Server', path: '/scanner/dns-zone' },
+  { id: 'dns-zone-transfer', name: 'DNS Zone Transfer', icon: 'Server', path: '/scanner/dns-zone-transfer' },
   { id: 'spf-dmarc', name: 'SPF/DMARC Checker', icon: 'Mail', path: '/scanner/spf-dmarc' },
   { id: 'rate-limit', name: 'Rate Limit Tester', icon: 'Gauge', path: '/scanner/rate-limit' },
 ] as const;
@@ -74,27 +81,120 @@ export const SEVERITY_COLORS: Record<Severity, string> = {
 
 const randomId = () => Math.random().toString(36).substring(2, 10);
 
-const MOCK_FINDINGS: Finding[] = [
-  { id: randomId(), asset: 'staging.example.com', finding: 'Dangling CNAME → Heroku', severity: 'critical', status: 'open', module: 'subdomain-takeover', timestamp: '2025-04-14T08:23:00Z', details: 'CNAME record points to deprovisioned Heroku app. Subdomain can be claimed by attacker.' },
-  { id: randomId(), asset: 's3://company-backups', finding: 'Public READ access on bucket', severity: 'critical', status: 'open', module: 's3-bucket', timestamp: '2025-04-14T07:15:00Z', details: 'S3 bucket allows unauthenticated LIST and GET operations. Contains database backups.' },
-  { id: randomId(), asset: 'api.example.com', finding: 'CORS allows arbitrary origins', severity: 'high', status: 'confirmed', module: 'cors-misconfig', timestamp: '2025-04-14T06:45:00Z', details: 'Access-Control-Allow-Origin reflects request Origin header without validation.' },
-  { id: randomId(), asset: 'example.com/.env', finding: 'Exposed .env file with DB creds', severity: 'critical', status: 'open', module: 'sensitive-files', timestamp: '2025-04-14T05:30:00Z', details: 'Environment file accessible at root containing DATABASE_URL, SECRET_KEY, and AWS credentials.' },
-  { id: randomId(), asset: 'app.example.com/main.js', finding: 'Hardcoded Stripe API key', severity: 'high', status: 'open', module: 'api-key-leak', timestamp: '2025-04-13T22:10:00Z', details: 'sk_live_xxxx found in minified JavaScript bundle.' },
-  { id: randomId(), asset: 'example.com/redirect', finding: 'Open redirect via ?url= param', severity: 'medium', status: 'open', module: 'open-redirect', timestamp: '2025-04-13T20:00:00Z', details: 'Redirect endpoint accepts arbitrary URLs. Can be used for phishing.' },
-  { id: randomId(), asset: 'example.com', finding: 'Missing X-Frame-Options', severity: 'medium', status: 'open', module: 'clickjacking', timestamp: '2025-04-13T18:30:00Z', details: 'No X-Frame-Options or CSP frame-ancestors header. Page can be embedded in iframes.' },
-  { id: randomId(), asset: 'ns1.example.com', finding: 'DNS zone transfer allowed', severity: 'high', status: 'confirmed', module: 'dns-zone', timestamp: '2025-04-13T16:15:00Z', details: 'AXFR query returns full zone file with internal hostnames and IP addresses.' },
-  { id: randomId(), asset: 'example.com', finding: 'SPF record too permissive', severity: 'medium', status: 'open', module: 'spf-dmarc', timestamp: '2025-04-13T14:00:00Z', details: 'SPF includes +all mechanism. Any server can send email as example.com.' },
-  { id: randomId(), asset: 'api.example.com/login', finding: 'No rate limiting on login', severity: 'high', status: 'open', module: 'rate-limit', timestamp: '2025-04-13T12:00:00Z', details: '1000 requests sent with no throttling. Brute force attack possible.' },
-  { id: randomId(), asset: 'dev.example.com', finding: 'Dangling A record', severity: 'low', status: 'false-positive', module: 'subdomain-takeover', timestamp: '2025-04-12T10:00:00Z', details: 'A record points to unresponsive IP. Likely internal infrastructure.' },
-  { id: randomId(), asset: 'example.com/wp-config.php.bak', finding: 'WordPress config backup', severity: 'high', status: 'resolved', module: 'sensitive-files', timestamp: '2025-04-12T08:00:00Z', details: 'Backup of WordPress config file accessible with database credentials.' },
+export const getMockFindings = (): Finding[] => [
+  {
+    id: randomId(),
+    asset: "api.example.com",
+    finding: "CORS misconfiguration detected",
+    severity: "high",
+    status: "open",
+    module: "cors",
+    timestamp: new Date(Date.now() - 3600000).toISOString(),
+    details: "The API endpoint reflects arbitrary origins in CORS headers without credentials restriction.",
+    vulnerableObjects: [{ url: "https://api.example.com/v1/users", type: "endpoint", description: "Reflects any origin" }],
+  },
+  {
+    id: randomId(),
+    asset: "example.com",
+    finding: "Sensitive file exposure",
+    severity: "critical",
+    status: "confirmed",
+    module: "sensitive-files",
+    timestamp: new Date(Date.now() - 7200000).toISOString(),
+    details: "Publicly accessible .env file found containing database credentials.",
+    vulnerableObjects: [{ url: "https://example.com/.env", type: "file" }],
+  },
+  {
+    id: randomId(),
+    asset: "cdn.example.com",
+    finding: "Subdomain takeover vulnerability",
+    severity: "critical",
+    status: "confirmed",
+    module: "subdomain-takeover",
+    timestamp: new Date(Date.now() - 10800000).toISOString(),
+    details: "Dangling CNAME record pointing to deprovisioned Netlify deployment.",
+    vulnerableObjects: [{ url: "cdn.example.com", type: "subdomain", description: "CNAME: cdn-example.netlify.app (NXDOMAIN)" }],
+  },
+  {
+    id: randomId(),
+    asset: "s3-backup.example.com",
+    finding: "S3 bucket publicly readable",
+    severity: "high",
+    status: "open",
+    module: "s3-buckets",
+    timestamp: new Date(Date.now() - 14400000).toISOString(),
+    details: "S3 bucket is publicly accessible for listing. Directory enumeration is possible.",
+    vulnerableObjects: [{ url: "https://s3-backup.s3.amazonaws.com", type: "bucket" }],
+  },
+  {
+    id: randomId(),
+    asset: "example.com",
+    finding: "Open redirect vulnerability",
+    severity: "medium",
+    status: "false-positive",
+    module: "open-redirect",
+    timestamp: new Date(Date.now() - 18000000).toISOString(),
+    details: "Redirect parameter accepts external URLs. Could be used in phishing attacks.",
+    vulnerableObjects: [{ url: "https://example.com/?next=", type: "parameter" }],
+  },
+  {
+    id: randomId(),
+    asset: "api.example.com",
+    finding: "Rate limiting not enforced",
+    severity: "medium",
+    status: "open",
+    module: "rate-limit",
+    timestamp: new Date(Date.now() - 21600000).toISOString(),
+    details: "API endpoint accepts 100+ requests per second without rate limiting. Could enable brute force attacks.",
+  },
+  {
+    id: randomId(),
+    asset: "example.com",
+    finding: "Missing DMARC policy",
+    severity: "medium",
+    status: "open",
+    module: "spf-dmarc",
+    timestamp: new Date(Date.now() - 25200000).toISOString(),
+    details: "No DMARC record found. Domain is susceptible to email spoofing.",
+  },
+  {
+    id: randomId(),
+    asset: "legacy.example.com",
+    finding: "Clickjacking vulnerability",
+    severity: "medium",
+    status: "open",
+    module: "clickjacking",
+    timestamp: new Date(Date.now() - 28800000).toISOString(),
+    details: "Missing X-Frame-Options and CSP frame-ancestors headers. Page can be framed in iframes.",
+  },
+  {
+    id: randomId(),
+    asset: "example.com",
+    finding: "DNS zone transfer allowed",
+    severity: "high",
+    status: "confirmed",
+    module: "dns-zone-transfer",
+    timestamp: new Date(Date.now() - 32400000).toISOString(),
+    details: "NS servers allow unauthenticated zone transfers. All DNS records exposed.",
+    vulnerableObjects: [{ url: "example.com", type: "zone", description: "Transferred 47 records" }],
+  },
+  {
+    id: randomId(),
+    asset: "app.example.com",
+    finding: "API key exposed in JavaScript",
+    severity: "critical",
+    status: "confirmed",
+    module: "api-key-leak",
+    timestamp: new Date(Date.now() - 36000000).toISOString(),
+    details: "AWS API key found in minified JavaScript source code.",
+    vulnerableObjects: [{ url: "https://app.example.com/static/app.js", type: "script", description: "AKIA2ZXQM7VWPQRSTUV9" }],
+  },
 ];
 
-export const getMockFindings = () => MOCK_FINDINGS;
-
-export const getStats = () => {
-  const findings = MOCK_FINDINGS;
+export const getStats = (): DashboardStats => {
+  const findings = getMockFindings();
   return {
-    totalScans: 47,
+    totalScans: 42,
     totalFindings: findings.length,
     critical: findings.filter(f => f.severity === 'critical').length,
     high: findings.filter(f => f.severity === 'high').length,
@@ -125,13 +225,13 @@ export const getModuleConfig = (moduleId: string) => {
       { label: 'Verify takeover feasibility', type: 'checkbox', default: true },
       { label: 'Include wildcard check', type: 'checkbox', default: false },
     ],
-    's3-bucket': [
+    's3-buckets': [
       { label: 'Check public READ', type: 'toggle', default: true },
       { label: 'Check public WRITE', type: 'toggle', default: true },
       { label: 'Enumerate objects', type: 'checkbox', default: false },
       { label: 'Check Azure Blob', type: 'checkbox', default: true },
     ],
-    'cors-misconfig': [
+    'cors': [
       { label: 'Test null origin', type: 'toggle', default: true },
       { label: 'Test wildcard origin', type: 'toggle', default: true },
       { label: 'Check credentials flag', type: 'checkbox', default: true },
@@ -145,39 +245,17 @@ export const getModuleConfig = (moduleId: string) => {
   return configs[moduleId] || configs.default;
 };
 
-export const generateScanResults = (moduleId: string, target: string): Finding[] => {
-  const moduleFindingsPool = MOCK_FINDINGS.filter(f => f.module === moduleId);
-  if (moduleFindingsPool.length === 0) {
-    return [{
-      id: randomId(),
-      asset: target,
-      finding: 'No vulnerabilities detected',
-      severity: 'info',
-      status: 'open',
-      module: moduleId,
-      timestamp: new Date().toISOString(),
-      details: 'Scan completed with no findings.',
-    }];
-  }
-  return moduleFindingsPool.map(f => ({
-    ...f,
-    id: randomId(),
-    asset: f.asset.replace('example.com', target),
-    timestamp: new Date().toISOString(),
-  }));
-};
-
-export const ACTIVITY_FEED = [
-  { time: '08:23:15', type: 'critical' as Severity, msg: '[CRITICAL] Subdomain takeover on staging.example.com' },
-  { time: '08:22:01', type: 'info' as Severity, msg: '[SCAN] S3 bucket scan started for example.com' },
-  { time: '08:20:45', type: 'high' as Severity, msg: '[HIGH] CORS misconfiguration on api.example.com' },
-  { time: '08:19:30', type: 'info' as Severity, msg: '[SCAN] DNS zone transfer check complete' },
-  { time: '08:18:12', type: 'medium' as Severity, msg: '[MEDIUM] Open redirect found on example.com' },
-  { time: '08:17:00', type: 'info' as Severity, msg: '[SCAN] Rate limit test started for api.example.com' },
-  { time: '08:15:33', type: 'critical' as Severity, msg: '[CRITICAL] .env file exposed on example.com' },
-  { time: '08:14:20', type: 'high' as Severity, msg: '[HIGH] API key leaked in main.js bundle' },
-  { time: '08:12:05', type: 'info' as Severity, msg: '[COMPLETE] SPF/DMARC check finished' },
-  { time: '08:10:00', type: 'low' as Severity, msg: '[LOW] Informational: dev.example.com A record dangling' },
+export const ACTIVITY_FEED: ActivityEntry[] = [
+  { time: new Date(Date.now() - 3600000).toISOString(), type: "critical", msg: "Critical: API key exposed in JavaScript on app.example.com" },
+  { time: new Date(Date.now() - 7200000).toISOString(), type: "critical", msg: "Critical: Sensitive file exposure detected at example.com/.env" },
+  { time: new Date(Date.now() - 10800000).toISOString(), type: "critical", msg: "Critical: Subdomain takeover on cdn.example.com (Netlify)" },
+  { time: new Date(Date.now() - 14400000).toISOString(), type: "high", msg: "High: S3 bucket publicly readable at s3-backup.example.com" },
+  { time: new Date(Date.now() - 18000000).toISOString(), type: "high", msg: "High: CORS misconfiguration on api.example.com" },
+  { time: new Date(Date.now() - 21600000).toISOString(), type: "high", msg: "High: DNS zone transfer allowed for example.com" },
+  { time: new Date(Date.now() - 25200000).toISOString(), type: "medium", msg: "Medium: Open redirect vulnerability on example.com" },
+  { time: new Date(Date.now() - 28800000).toISOString(), type: "medium", msg: "Medium: Clickjacking possible on legacy.example.com" },
+  { time: new Date(Date.now() - 32400000).toISOString(), type: "medium", msg: "Medium: Missing DMARC policy on example.com domain" },
+  { time: new Date(Date.now() - 36000000).toISOString(), type: "medium", msg: "Medium: Rate limiting not enforced on api.example.com" },
 ];
 
 export const H1_REPORT_TEMPLATE = (finding: Finding) => `

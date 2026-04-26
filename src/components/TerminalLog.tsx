@@ -1,34 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-import { MOCK_LOG_LINES } from "@/lib/mock-data";
+import { useEffect, useRef } from "react";
 
 interface TerminalLogProps {
   isRunning: boolean;
-  target: string;
-  onComplete?: () => void;
+  lines: string[];
 }
 
-export function TerminalLog({ isRunning, target, onComplete }: TerminalLogProps) {
-  const [lines, setLines] = useState<string[]>([]);
+export function TerminalLog({ isRunning, lines }: TerminalLogProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval>>();
-
-  useEffect(() => {
-    if (isRunning) {
-      setLines([]);
-      let idx = 0;
-      const logs = MOCK_LOG_LINES.map(l => l.replace('{target}', target).replace('{count}', String(Math.floor(Math.random() * 5) + 1)));
-      intervalRef.current = setInterval(() => {
-        if (idx < logs.length) {
-          setLines(prev => [...prev, `${new Date().toLocaleTimeString()} ${logs[idx]}`]);
-          idx++;
-        } else {
-          clearInterval(intervalRef.current);
-          onComplete?.();
-        }
-      }, 600);
-    }
-    return () => clearInterval(intervalRef.current);
-  }, [isRunning, onComplete, target]);
 
   useEffect(() => {
     if (containerRef.current) {
@@ -48,10 +26,10 @@ export function TerminalLog({ isRunning, target, onComplete }: TerminalLogProps)
         {lines.length === 0 && !isRunning && (
           <span className="text-muted-foreground">Awaiting scan command...</span>
         )}
-        {lines.map((line, i) => (
+        {lines.filter(line => line && line.trim() !== "").map((line, i) => (
           <div key={i} className={
             line.includes('[!]') || line.includes('[CRITICAL]') ? 'text-destructive' :
-            line.includes('[+]') ? 'text-primary' :
+            line.includes('[+]') || line.includes("complete") ? 'text-primary' :
             'text-foreground'
           }>
             {line}
