@@ -6,7 +6,6 @@
 ![React](https://img.shields.io/badge/React-TypeScript-61DAFB?style=flat-square)
 ![Flask](https://img.shields.io/badge/Flask-SSE-black?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-![Patent](https://img.shields.io/badge/Patent-Pending-orange?style=flat-square)
 
 ---
 
